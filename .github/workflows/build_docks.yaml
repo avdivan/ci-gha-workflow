@@ -70,20 +70,6 @@ jobs:
           cd ${{ env.OPENCV_CONTRIB_DOCKER_WORKDIR }}
           echo "LATEST_COMMIT_OPENCV_CONTRIB=$(git log -n 1 ${{ env.TARGET_BRANCH_NAME }} --pretty=format:'%H')" >> $GITHUB_ENV
 
-      - name: Install JDK
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y default-jdk
-
-      - name: Set JAVA_HOME
-        run: echo "JAVA_HOME=$(dirname $(dirname $(readlink -f $(which javac))))" >> $GITHUB_ENV
-
-      - name: Debug Java
-        run: |
-          echo "JAVA_HOME=${JAVA_HOME}"
-          java -version
-          javac -version
-
       - name: Configure Doxygen
         if: ${{ always() && steps.last-repo-step.outcome == 'success' }}
         id: opencv-doxygen
@@ -98,32 +84,42 @@ jobs:
         working-directory: ${{ env.HOME }}/build
         run: cmake --build . --config release --target doxygen -- -j$(nproc) 2>&1 | tee log.txt     
       
-      - name: Check CMake Targets
-        working-directory: ${{ env.HOME }}/build
-        run: cmake --build . --target help
-
-      - name: Build Java wrapper
-        if: ${{ always() && steps.build-opencv.outcome == 'success' }}
-        working-directory: ${{ env.HOME }}/build
-        run: cmake --build . --target opencv_java -- -j$(nproc)
-
-      - name: Generate Javadoc
-        if: ${{ always() }}
-        run: |
-          mkdir -p $HOME/javadoc
-          javadoc \
-            -d $HOME/javadoc \
-            -sourcepath ${{ env.OPENCV_DOCKER_WORKDIR }}/modules/java/module/src \
-            -subpackages org.opencv
-
-      - name: Archive Javadoc
-        uses: actions/upload-artifact@v4
-        with:
-          name: opencv-javadoc-${{ matrix.branch }}
-          path: ${{ env.HOME }}/javadoc
 
       - name: Archive Docs
         uses: actions/upload-artifact@v4
         with:
           name: opencv-docs-${{ matrix.branch }}
           path: ${{ env.HOME }}/build/doc/doxygen/html
+
+      - name: Archive Java Sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-sources-${{ matrix.branch }}
+          path: ${{ env.OPENCV_DOCKER_WORKDIR }}/modules/java/generator/src/java
+
+  build-javadoc:
+    name: Build JavaDocs ${{ matrix.branch }}
+    needs: build-docs
+    runs-on: ubuntu-22.04
+    container:
+      image: openjdk:11-jdk-slim
+    strategy:
+      matrix:
+        branch: [4.x, 5.x]
+    steps:
+      - name: Download Java sources
+        uses: actions/download-artifact@v4
+        with:
+          name: java-sources-${{ matrix.branch }}
+          path: ./java-src
+
+      - name: Generate Javadoc
+        run: |
+          mkdir -p ./javadoc
+          javadoc -d ./javadoc -sourcepath ./java-src -subpackages org.opencv
+
+      - name: Archive Javadoc
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-javadoc-${{ matrix.branch }}
+          path: ./javadoc
