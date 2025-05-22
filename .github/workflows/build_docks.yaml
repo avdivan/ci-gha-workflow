@@ -70,6 +70,20 @@ jobs:
           cd ${{ env.OPENCV_CONTRIB_DOCKER_WORKDIR }}
           echo "LATEST_COMMIT_OPENCV_CONTRIB=$(git log -n 1 ${{ env.TARGET_BRANCH_NAME }} --pretty=format:'%H')" >> $GITHUB_ENV
 
+      - name: Install JDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y default-jdk
+
+      - name: Set JAVA_HOME
+        run: echo "JAVA_HOME=$(dirname $(dirname $(readlink -f $(which javac))))" >> $GITHUB_ENV
+
+      - name: Debug Java
+        run: |
+          echo "JAVA_HOME=${JAVA_HOME}"
+          java -version
+          javac -version
+
       - name: Configure Doxygen
         if: ${{ always() && steps.last-repo-step.outcome == 'success' }}
         id: opencv-doxygen
@@ -84,6 +98,10 @@ jobs:
         working-directory: ${{ env.HOME }}/build
         run: cmake --build . --config release --target doxygen -- -j$(nproc) 2>&1 | tee log.txt     
       
+      - name: Check CMake Targets
+        working-directory: ${{ env.HOME }}/build
+        run: cmake --build . --target help
+
       - name: Build Java wrapper
         if: ${{ always() && steps.build-opencv.outcome == 'success' }}
         working-directory: ${{ env.HOME }}/build
@@ -95,7 +113,7 @@ jobs:
           mkdir -p $HOME/javadoc
           javadoc \
             -d $HOME/javadoc \
-            -sourcepath ${{ env.OPENCV_DOCKER_WORKDIR }}/modules/java/generator/src/java \
+            -sourcepath ${{ env.OPENCV_DOCKER_WORKDIR }}/modules/java/module/src \
             -subpackages org.opencv
 
       - name: Archive Javadoc
