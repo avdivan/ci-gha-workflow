@@ -15,111 +15,68 @@ env:
   OPENCV_CONTRIB_DOCKER_WORKDIR: '/home/ci/opencv_contrib'
 
 jobs:
-  build-docs:
-    name: Build Docs ${{ matrix.branch }}
-    runs-on: ubuntu-22.04
-    container:
-      image: quay.io/opencv-ci/opencv-docs-22.04:20241202
-      options: --user ci
-    defaults:
-      run:
-        shell: bash
-    strategy:
-      matrix:
-        branch: [4.x, 5.x]
-    env:
-      SOURCE_BRANCH_NAME: ${{ github.head_ref || matrix.branch }}
-      TARGET_BRANCH_NAME: ${{ github.base_ref || matrix.branch }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: opencv/ci-gha-workflow
-          ref: ${{ github.repository == 'opencv/ci-gha-workflow' && github.ref || 'main' }}
+ build-javadoc:
+  name: Build Full JavaDocs ${{ matrix.branch }}
+  runs-on: ubuntu-22.04
+  container:
+    image: openjdk:11-jdk-slim
+  strategy:
+    matrix:
+      branch: [4.x, 5.x]
+  env:
+    EXTRA_CMAKE_OPTIONS: '-DOPENCV_ENABLE_NONFREE=ON -DBUILD_DOCS_JS_BINDINGS=OFF -DBUILD_SHARED_LIBS=ON -DBUILD_DOCS=OFF -DOPENCV_DOCS_HAVE_DOT=YES -DBUILD_TESTS=OFF -DWITH_OPENNI2=ON -DWITH_GDCM=ON -DPYTHON_DEFAULT_EXECUTABLE=/usr/bin/python3 -DOPENCV_EXTRA_MODULES_PATH=/home/ci/opencv_contrib/modules -DWITH_GDAL=ON -DBUILD_EXAMPLES=OFF -DBUILD_PERF_TESTS=OFF -DWITH_IPP=OFF -DBUILD_opencv_java=ON'
+    OPENCV_DOCKER_WORKDIR: '/home/ci/opencv'
+    OPENCV_CONTRIB_DOCKER_WORKDIR: '/home/ci/opencv_contrib'
 
-      - name: Define HOME
-        run: echo "HOME=/home/ci" >> $GITHUB_ENV
+  steps:
+    - name: Checkout OpenCV repo
+      uses: actions/checkout@v4
+      with:
+        repository: opencv/opencv
+        ref: ${{ matrix.branch }}
 
-      - name: Force TARGET_BRANCH_NAME (if in ci-gha-workflow repo)
-        if: ${{ github.event.repository.name == 'ci-gha-workflow' }}
-        run: echo "TARGET_BRANCH_NAME=${{ matrix.branch }}" >> $GITHUB_ENV
+    - name: Checkout OpenCV contrib repo
+      uses: actions/checkout@v4
+      with:
+        repository: opencv/opencv_contrib
+        ref: ${{ matrix.branch }}
+        path: ${{ env.OPENCV_CONTRIB_DOCKER_WORKDIR }}
 
-      - name: Info
-        run: |
-          echo "SOURCE_BRANCH_NAME=${{ env.SOURCE_BRANCH_NAME }}"
-          echo "TARGET_BRANCH_NAME=${{ env.TARGET_BRANCH_NAME }}"
+    - name: Prepare build directory
+      run: |
+        mkdir -p ${{ env.OPENCV_DOCKER_WORKDIR }}/build
+        cd ${{ env.OPENCV_DOCKER_WORKDIR }}/build
 
-      - name: Clean workspace
-        run: find ${{ env.OPENCV_DOCKER_WORKDIR }} -mindepth 1 -delete
+    - name: Configure CMake (with Java enabled)
+      run: |
+        cd ${{ env.OPENCV_DOCKER_WORKDIR }}/build
+        cmake ${{ env.EXTRA_CMAKE_OPTIONS }} ${{ env.OPENCV_DOCKER_WORKDIR }}
 
-      - name: Clone OpenCV
-        run: |
-          git clone --branch ${{ env.TARGET_BRANCH_NAME }} https://github.com/opencv/opencv.git ${{ env.OPENCV_DOCKER_WORKDIR }}
-          cd ${{ env.OPENCV_DOCKER_WORKDIR }}
-          echo "LATEST_COMMIT_OPENCV=$(git log -n 1 ${{ env.TARGET_BRANCH_NAME }} --pretty=format:'%H')" >> $GITHUB_ENV
+    - name: Build OpenCV Java bindings and jar
+      run: |
+        cd ${{ env.OPENCV_DOCKER_WORKDIR }}/build
+        cmake --build . --config Release -j$(nproc)
 
-      - name: Clone OpenCV Extra
-        run: |
-          git clone --branch ${{ env.TARGET_BRANCH_NAME }} https://github.com/opencv/opencv_extra.git $HOME/opencv_extra
-          cd ${{ env.OPENCV_EXTRA_DOCKER_WORKDIR }}
-          echo "LATEST_COMMIT_OPENCV_EXTRA=$(git log -n 1 ${{ env.TARGET_BRANCH_NAME }} --pretty=format:'%H')" >> $GITHUB_ENV
+    - name: Locate Java jar
+      id: find-java-jar
+      run: |
+        JAR_PATH=$(find ${{ env.OPENCV_DOCKER_WORKDIR }}/build -name "opencv-*.jar" | head -n1)
+        echo "JAVA_JAR=$JAR_PATH" >> $GITHUB_ENV
+        echo "Found Java jar at: $JAR_PATH"
 
-      - name: Clone OpenCV Contrib
-        id: last-repo-step
-        run: |
-          git clone --branch ${{ env.TARGET_BRANCH_NAME }} https://github.com/opencv/opencv_contrib.git $HOME/opencv_contrib
-          cd ${{ env.OPENCV_CONTRIB_DOCKER_WORKDIR }}
-          echo "LATEST_COMMIT_OPENCV_CONTRIB=$(git log -n 1 ${{ env.TARGET_BRANCH_NAME }} --pretty=format:'%H')" >> $GITHUB_ENV
+    - name: Copy Java sources
+      run: |
+        mkdir -p ./java-src
+        cp -r ${{ env.OPENCV_DOCKER_WORKDIR }}/modules/java/generator/src/java/* ./java-src/
 
-      - name: Configure Doxygen
-        if: ${{ always() && steps.last-repo-step.outcome == 'success' }}
-        id: opencv-doxygen
-        run: |
-          mkdir -p $HOME/build
-          cd $HOME/build
-          cmake ${{ env.EXTRA_CMAKE_OPTIONS }} ${{ env.OPENCV_DOCKER_WORKDIR }}
+    - name: Generate Javadoc
+      run: |
+        mkdir -p ./javadoc
+        javadoc -d ./javadoc -sourcepath ./java-src -subpackages org.opencv -classpath ${{ env.JAVA_JAR }}
 
-      - name: Build Doxygen
-        if: ${{ always() && steps.opencv-doxygen.outcome == 'success' }}
-        id: build-opencv
-        working-directory: ${{ env.HOME }}/build
-        run: cmake --build . --config release --target doxygen -- -j$(nproc) 2>&1 | tee log.txt     
-      
-
-      - name: Archive Docs
-        uses: actions/upload-artifact@v4
-        with:
-          name: opencv-docs-${{ matrix.branch }}
-          path: ${{ env.HOME }}/build/doc/doxygen/html
-
-      - name: Archive Java Sources
-        uses: actions/upload-artifact@v4
-        with:
-          name: java-sources-${{ matrix.branch }}
-          path: ${{ env.OPENCV_DOCKER_WORKDIR }}/modules/java/generator/src/java
-
-  build-javadoc:
-    name: Build JavaDocs ${{ matrix.branch }}
-    needs: build-docs
-    runs-on: ubuntu-22.04
-    container:
-      image: openjdk:11-jdk-slim
-    strategy:
-      matrix:
-        branch: [4.x, 5.x]
-    steps:
-      - name: Download Java sources
-        uses: actions/download-artifact@v4
-        with:
-          name: java-sources-${{ matrix.branch }}
-          path: ./java-src
-
-      - name: Generate Javadoc
-        run: |
-          mkdir -p ./javadoc
-          javadoc -d ./javadoc -sourcepath ./java-src -subpackages org.opencv
-
-      - name: Archive Javadoc
-        uses: actions/upload-artifact@v4
-        with:
-          name: opencv-javadoc-${{ matrix.branch }}
-          path: ./javadoc
+    - name: Upload Javadoc
+      uses: actions/upload-artifact@v4
+      with:
+        name: opencv-javadoc-${{ matrix.branch }}
+        path: ./javadoc
+        
