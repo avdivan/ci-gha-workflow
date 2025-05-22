@@ -78,7 +78,27 @@ jobs:
         if: ${{ always() && steps.opencv-doxygen.outcome == 'success' }}
         id: build-opencv
         working-directory: ${{ env.HOME }}/build
-        run: cmake --build . --config release --target doxygen -- -j$(nproc) 2>&1 | tee log.txt
+        run: cmake --build . --config release --target doxygen -- -j$(nproc) 2>&1 | tee log.txt     
+      
+      - name: Build Java wrapper
+        if: ${{ always() && steps.opencv-doxygen.outcome == 'success' }}
+        working-directory: ${{ env.HOME }}/build
+        run: cmake --build . --target opencv_java -- -j$(nproc)
+
+      - name: Generate Javadoc
+        if: ${{ always() }}
+        run: |
+          mkdir -p $HOME/javadoc
+          javadoc \
+            -d $HOME/javadoc \
+            -sourcepath ${{ env.OPENCV_DOCKER_WORKDIR }}/modules/java/generator/src/java \
+            -subpackages org.opencv
+
+      - name: Archive Javadoc
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-javadoc-${{ matrix.branch }}
+          path: ${{ env.HOME }}/javadoc
 
       - name: Archive Docs
         uses: actions/upload-artifact@v4
