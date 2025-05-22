@@ -81,7 +81,7 @@ jobs:
         run: cmake --build . --config release --target doxygen -- -j$(nproc) 2>&1 | tee log.txt     
       
       - name: Build Java wrapper
-        if: ${{ always() && steps.opencv-doxygen.outcome == 'success' }}
+        if: ${{ always() && steps.build-opencv.outcome == 'success' }}
         working-directory: ${{ env.HOME }}/build
         run: cmake --build . --target opencv_java -- -j$(nproc)
 
