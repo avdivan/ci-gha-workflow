@@ -39,11 +39,10 @@ jobs:
                 -DCMAKE_BUILD_TYPE=Release \
                 -DANT_EXECUTABLE=/usr/bin/ant \
                 $OPENCV_SRC
-
-      - name: Build Java bindings
+               
+      - name: List generated Java sources
         run: |
-          cd $OPENCV_BUILD
-          cmake --build . --target opencv_java -- -j2
+          find $OPENCV_SRC/modules/java/generator/gen/java -name "*.java"
 
       - name: Generate Javadoc
         run: |
