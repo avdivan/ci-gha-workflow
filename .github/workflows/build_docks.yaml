@@ -22,7 +22,7 @@ jobs:
     env:
       OPENCV_SRC: /home/ci/opencv
       OPENCV_BUILD: /home/ci/opencv-build
-      JAVA_DOC: /home/ci/opencv/build/doc/doxygen/html/javadoc
+      JAVA_DOC: /home/ci/opencv-build/doc/doxygen/html/javadoc
     steps:
       - name: Checkout OpenCV
         run: |
