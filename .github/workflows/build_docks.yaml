@@ -42,7 +42,7 @@ jobs:
                
       - name: List generated Java sources
         run: |
-          find $OPENCV_SRC/modules/java/generator/gen/java -name "*.java"
+          find $OPENCV_SRC/ -name "*.java"
 
       - name: Generate Javadoc
         run: |
