@@ -42,9 +42,12 @@ jobs:
 
       - name: Generate Javadoc
         run: |
-          mkdir -p $JAVA_DOC
-          find $OPENCV_SRC/modules/java/src $OPENCV_BUILD/modules/java_bindings_generator/src/java -name "*.java" > sources.txt
-          javadoc -encoding UTF-8 -charset UTF-8 -quiet -Xdoclint:none -d $JAVA_DOC @sources.txt
+           mkdir -p $JAVA_DOC
+           find $OPENCV_SRC/modules/ -path "*/java/*" -name "*.java" > sources.txt
+           find $OPENCV_SRC/samples/java -name "*.java" >> sources.txt
+           find $OPENCV_SRC/samples/android -name "*.java" >> sources.txt
+           javadoc -encoding UTF-8 -charset UTF-8 -quiet -Xdoclint:none -d $JAVA_DOC @sources.txt
+
 
 
       - name: Archive Javadoc
