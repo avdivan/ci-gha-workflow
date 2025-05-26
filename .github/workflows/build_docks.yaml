@@ -41,7 +41,7 @@ jobs:
       - name: Build Java Bindings (to generate sources)
         run: |
           cd $OPENCV_BUILD
-          make -j$(nproc) java_bindings_generator
+          make -j2
 
       - name: Generate Javadoc using Ant
         run: |
