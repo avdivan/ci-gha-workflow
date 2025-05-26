@@ -52,4 +52,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: opencv-javadoc-${{ matrix.branch }}
-          path: $JAVA_DOC
+          path: /home/ci/opencv-build/doc/doxygen/html/javadoc
