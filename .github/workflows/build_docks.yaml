@@ -43,7 +43,7 @@ jobs:
       - name: Build Java bindings
         run: |
           cd $OPENCV_BUILD
-          cmake --build . --target opencv_java -- -j$(nproc)
+          cmake --build . --target opencv_java -- -j2
 
       - name: Generate Javadoc
         run: |
