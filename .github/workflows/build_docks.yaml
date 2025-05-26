@@ -1,6 +1,7 @@
-name: build docks
+name: Build JavaDocs
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - avdivan-patch-1
@@ -8,75 +9,36 @@ on:
     branches:
       - avdivan-patch-1
 
-env:
-  EXTRA_CMAKE_OPTIONS: '-DOPENCV_ENABLE_NONFREE=ON -DBUILD_DOCS_JS_BINDINGS=OFF -DBUILD_SHARED_LIBS=ON -DBUILD_DOCS=ON -DOPENCV_DOCS_HAVE_DOT=YES -DBUILD_TESTS=ON -DWITH_OPENNI2=ON -DWITH_GDCM=ON -DPYTHON_DEFAULT_EXECUTABLE=/usr/bin/python3 -DOPENCV_EXTRA_MODULES_PATH=/home/ci/opencv_contrib/modules -DWITH_GDAL=ON -DBUILD_EXAMPLES=ON  -DBUILD_PERF_TESTS=ON -DWITH_IPP=OFF -DBUILD_opencv_java=ON'
-  OPENCV_DOCKER_WORKDIR: '/home/ci/opencv'
-  OPENCV_EXTRA_DOCKER_WORKDIR: '/home/ci/opencv_extra'
-  OPENCV_CONTRIB_DOCKER_WORKDIR: '/home/ci/opencv_contrib'
-
 jobs:
- build-javadoc:
-  name: Build Full JavaDocs ${{ matrix.branch }}
-  runs-on: ubuntu-22.04
-  container:
-    image: openjdk:11-jdk-slim
-  strategy:
-    matrix:
-      branch: [4.x, 5.x]
-  env:
-    EXTRA_CMAKE_OPTIONS: '-DOPENCV_ENABLE_NONFREE=ON -DBUILD_DOCS_JS_BINDINGS=OFF -DBUILD_SHARED_LIBS=ON -DBUILD_DOCS=OFF -DOPENCV_DOCS_HAVE_DOT=YES -DBUILD_TESTS=OFF -DWITH_OPENNI2=ON -DWITH_GDCM=ON -DPYTHON_DEFAULT_EXECUTABLE=/usr/bin/python3 -DOPENCV_EXTRA_MODULES_PATH=/home/ci/opencv_contrib/modules -DWITH_GDAL=ON -DBUILD_EXAMPLES=OFF -DBUILD_PERF_TESTS=OFF -DWITH_IPP=OFF -DBUILD_opencv_java=ON'
-    OPENCV_DOCKER_WORKDIR: '/home/ci/opencv'
-    OPENCV_CONTRIB_DOCKER_WORKDIR: '/home/ci/opencv_contrib'
+  build-javadoc:
+    name: Build JavaDocs ${{ matrix.branch }}
+    runs-on: ubuntu-22.04
+    container:
+      image: quay.io/opencv-ci/opencv-androidsdk-34:20250516
+      options: --user ci
+    strategy:
+      matrix:
+        branch: [4.x, 5.x]
+    env:
+      OPENCV_DIR: /home/ci/opencv
+      JAVA_SRC: /home/ci/opencv/modules/java/generator/src/java
+      JDK_HOME: /usr/lib/jvm/java-11-openjdk-amd64  # может быть другим, проверим
+    steps:
+      - name: Checkout OpenCV
+        run: |
+          git clone --branch ${{ matrix.branch }} https://github.com/opencv/opencv.git $OPENCV_DIR
 
-  steps:
-    - name: Checkout OpenCV repo
-      uses: actions/checkout@v4
-      with:
-        repository: opencv/opencv
-        ref: ${{ matrix.branch }}
+      - name: Build JavaDocs
+        run: |
+          mkdir -p /home/ci/javadoc
+          javadoc \
+            -d /home/ci/javadoc \
+            -sourcepath $JAVA_SRC \
+            -subpackages org.opencv \
+            -Xdoclint:none
 
-    - name: Checkout OpenCV contrib repo
-      uses: actions/checkout@v4
-      with:
-        repository: opencv/opencv_contrib
-        ref: ${{ matrix.branch }}
-        path: ${{ env.OPENCV_CONTRIB_DOCKER_WORKDIR }}
-
-    - name: Prepare build directory
-      run: |
-        mkdir -p ${{ env.OPENCV_DOCKER_WORKDIR }}/build
-        cd ${{ env.OPENCV_DOCKER_WORKDIR }}/build
-
-    - name: Configure CMake (with Java enabled)
-      run: |
-        cd ${{ env.OPENCV_DOCKER_WORKDIR }}/build
-        cmake ${{ env.EXTRA_CMAKE_OPTIONS }} ${{ env.OPENCV_DOCKER_WORKDIR }}
-
-    - name: Build OpenCV Java bindings and jar
-      run: |
-        cd ${{ env.OPENCV_DOCKER_WORKDIR }}/build
-        cmake --build . --config Release -j$(nproc)
-
-    - name: Locate Java jar
-      id: find-java-jar
-      run: |
-        JAR_PATH=$(find ${{ env.OPENCV_DOCKER_WORKDIR }}/build -name "opencv-*.jar" | head -n1)
-        echo "JAVA_JAR=$JAR_PATH" >> $GITHUB_ENV
-        echo "Found Java jar at: $JAR_PATH"
-
-    - name: Copy Java sources
-      run: |
-        mkdir -p ./java-src
-        cp -r ${{ env.OPENCV_DOCKER_WORKDIR }}/modules/java/generator/src/java/* ./java-src/
-
-    - name: Generate Javadoc
-      run: |
-        mkdir -p ./javadoc
-        javadoc -d ./javadoc -sourcepath ./java-src -subpackages org.opencv -classpath ${{ env.JAVA_JAR }}
-
-    - name: Upload Javadoc
-      uses: actions/upload-artifact@v4
-      with:
-        name: opencv-javadoc-${{ matrix.branch }}
-        path: ./javadoc
-        
+      - name: Archive Javadoc
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-javadoc-${{ matrix.branch }}
+          path: /home/ci/javadoc
