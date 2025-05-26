@@ -1,4 +1,4 @@
-name: Build JavaDocs
+name: Build OpenCV JavaDocs
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-javadoc:
-    name: Build JavaDocs ${{ matrix.branch }}
+    name: JavaDocs ${{ matrix.branch }}
     runs-on: ubuntu-22.04
     container:
       image: quay.io/opencv-ci/opencv-androidsdk-34:20250516
@@ -20,25 +20,37 @@ jobs:
       matrix:
         branch: [4.x, 5.x]
     env:
-      OPENCV_DIR: /home/ci/opencv
-      JAVA_SRC: /home/ci/opencv/modules/java/generator/src/java
-      JDK_HOME: /usr/lib/jvm/java-11-openjdk-amd64  # может быть другим, проверим
+      OPENCV_SRC: /home/ci/opencv
+      OPENCV_BUILD: /home/ci/opencv-build
+      JAVA_OUT: /home/ci/opencv-build/java
+      JAVA_DOC: /home/ci/javadoc
     steps:
       - name: Checkout OpenCV
         run: |
-          git clone --branch ${{ matrix.branch }} https://github.com/opencv/opencv.git $OPENCV_DIR
+          git clone --branch ${{ matrix.branch }} https://github.com/opencv/opencv.git $OPENCV_SRC
 
-      - name: Build JavaDocs
+      - name: Configure CMake (generate Java sources)
         run: |
-          mkdir -p /home/ci/javadoc
-          javadoc \
-            -d /home/ci/javadoc \
-            -sourcepath $JAVA_SRC \
-            -subpackages org.opencv \
-            -Xdoclint:none
+          mkdir -p $OPENCV_BUILD
+          cd $OPENCV_BUILD
+          cmake -DBUILD_SHARED_LIBS=OFF \
+                -DBUILD_opencv_java=ON \
+                -DCMAKE_BUILD_TYPE=Release \
+                $OPENCV_SRC
+
+      - name: Build Java bindings
+        run: |
+          cd $OPENCV_BUILD
+          cmake --build . --target opencv_java -- -j$(nproc)
+
+      - name: Generate Javadoc
+        run: |
+          mkdir -p $JAVA_DOC
+          find $JAVA_OUT -name "*.java" > sources.txt
+          javadoc -d $JAVA_DOC @sources.txt -Xdoclint:none
 
       - name: Archive Javadoc
         uses: actions/upload-artifact@v4
         with:
           name: opencv-javadoc-${{ matrix.branch }}
-          path: /home/ci/javadoc
+          path: $JAVA_DOC
