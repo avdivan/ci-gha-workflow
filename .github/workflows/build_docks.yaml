@@ -28,7 +28,12 @@ jobs:
       - name: Checkout OpenCV
         run: |
           git clone --branch ${{ matrix.branch }} https://github.com/opencv/opencv.git $OPENCV_SRC
-
+          
+      - name: Set JAVA environment
+        run: |
+          echo "JAVA_HOME=$(dirname $(dirname $(readlink -f $(which javac))))" >> $GITHUB_ENV
+          echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+          
       - name: Configure CMake (generate Java sources)
         run: |
           mkdir -p $OPENCV_BUILD
@@ -36,6 +41,7 @@ jobs:
           cmake -DBUILD_SHARED_LIBS=OFF \
                 -DBUILD_opencv_java=ON \
                 -DCMAKE_BUILD_TYPE=Release \
+                -DANT_EXECUTABLE=/usr/bin/ant \
                 $OPENCV_SRC
 
       - name: Build Java bindings
