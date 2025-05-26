@@ -39,16 +39,13 @@ jobs:
                 -DCMAKE_BUILD_TYPE=Release \
                 -DANT_EXECUTABLE=/usr/bin/ant \
                 $OPENCV_SRC
-               
-      - name: List generated Java sources
-        run: |
-          find $OPENCV_SRC/ -name "*.java"
 
       - name: Generate Javadoc
         run: |
           mkdir -p $JAVA_DOC
-          find $OPENCV_SRC/ -name "*.java" > sources.txt
-          javadoc -d $JAVA_DOC @sources.txt -Xdoclint:none
+          find $OPENCV_BUILD/modules/java_bindings_generator/ $OPENCV_SRC -name "*.java" > sources.txt
+          javadoc -encoding UTF-8 -charset UTF-8 -quiet -Xdoclint:none -d $JAVA_DOC @sources.txt
+
 
       - name: Archive Javadoc
         uses: actions/upload-artifact@v4
