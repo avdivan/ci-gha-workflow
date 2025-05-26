@@ -14,7 +14,7 @@ jobs:
     name: JavaDocs ${{ matrix.branch }}
     runs-on: ubuntu-22.04
     container:
-      image: quay.io/opencv-ci/opencv-androidsdk-34:20250516
+      image: quay.io/opencv-ci/opencv-docs-22.04:20250404
       options: --user ci
     strategy:
       matrix:
@@ -29,10 +29,6 @@ jobs:
         run: |
           git clone --branch ${{ matrix.branch }} https://github.com/opencv/opencv.git $OPENCV_SRC
           
-      - name: Set JAVA environment
-        run: |
-          echo "JAVA_HOME=$(dirname $(dirname $(readlink -f $(which javac))))" >> $GITHUB_ENV
-          echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
           
       - name: Configure CMake (generate Java sources)
         run: |
