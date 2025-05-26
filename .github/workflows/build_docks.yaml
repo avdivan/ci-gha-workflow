@@ -22,14 +22,12 @@ jobs:
     env:
       OPENCV_SRC: /home/ci/opencv
       OPENCV_BUILD: /home/ci/opencv-build
-      JAVA_OUT: /home/ci/opencv-build/java
-      JAVA_DOC: /home/ci/javadoc
+      JAVA_DOC: /home/ci/opencv/build/doc/doxygen/html/javadoc
     steps:
       - name: Checkout OpenCV
         run: |
           git clone --branch ${{ matrix.branch }} https://github.com/opencv/opencv.git $OPENCV_SRC
-          
-          
+
       - name: Configure CMake (generate Java sources)
         run: |
           mkdir -p $OPENCV_BUILD
@@ -40,15 +38,15 @@ jobs:
                 -DANT_EXECUTABLE=/usr/bin/ant \
                 $OPENCV_SRC
 
-      - name: Generate Javadoc
+      - name: Build Java Bindings (to generate sources)
         run: |
-           mkdir -p $JAVA_DOC
-           find $OPENCV_SRC/modules/ -path "*/java/*" -name "*.java" > sources.txt
-           find $OPENCV_SRC/samples/java -name "*.java" >> sources.txt
-           find $OPENCV_SRC/samples/android -name "*.java" >> sources.txt
-           javadoc -encoding UTF-8 -charset UTF-8 -quiet -Xdoclint:none -d $JAVA_DOC @sources.txt
+          cd $OPENCV_BUILD
+          make -j$(nproc) java_bindings_generator
 
-
+      - name: Generate Javadoc using Ant
+        run: |
+          cd $OPENCV_BUILD/modules/java/jar/opencv
+          ant javadoc
 
       - name: Archive Javadoc
         uses: actions/upload-artifact@v4
