@@ -27,6 +27,9 @@ jobs:
       - name: Checkout OpenCV
         run: |
           git clone --branch ${{ matrix.branch }} https://github.com/opencv/opencv.git $OPENCV_SRC
+      - name: Checkout OpenCV Contrib
+        run: |
+          git clone --branch ${{ matrix.branch }} https://github.com/opencv/opencv_contrib.git /home/ci/opencv_contrib
 
       - name: Configure CMake (generate Java sources)
         run: |
@@ -35,6 +38,7 @@ jobs:
           cmake -DBUILD_SHARED_LIBS=OFF \
                 -DBUILD_opencv_java=ON \
                 -DCMAKE_BUILD_TYPE=Release \
+                -DOPENCV_EXTRA_MODULES_PATH=/home/ci/opencv_contrib/modules \
                 -DANT_EXECUTABLE=/usr/bin/ant \
                 $OPENCV_SRC
 
