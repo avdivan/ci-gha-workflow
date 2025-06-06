@@ -1,12 +1,13 @@
 name: OCV PR:5.x docs
 
 on:
+  workflow_dispatch:
+  push:
+    branches:
+      - avdivan-patch-1
   pull_request:
     branches:
-      - main
-    paths:
-      - '.github/workflows/OCV-PR-5.x-docs.yaml'
-  workflow_call:
+      - avdivan-patch-1
 
 concurrency:
   group: OCV-PR-5.x-docs-${{ github.ref }}
@@ -29,7 +30,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: quay.io/opencv-ci/opencv-docs-22.04:20250404
+      image: quay.io/opencv-ci/opencv-docs-jdk-js-22.04:20250526
       options: --user ci
     steps:
     - uses: actions/checkout@v4
