@@ -1,0 +1,164 @@
+name: OCV PR:5.x W10-ARM64
+
+on:
+  workflow_dispatch:
+    inputs:
+      SOURCE_BRANCH_NAME:
+        description: "Source branch name (fork PR branch)"
+        required: false
+        default: ""
+      PR_AUTHOR:
+        description: "PR author login (for merge step)"
+        required: false
+        default: ""
+      PR_AUTHOR_FORK:
+        description: "Fork repo full name like user/opencv (for merge step)"
+        required: false
+        default: ""
+      TARGET_BRANCH_NAME:
+        description: "Target branch in upstream opencv/opencv"
+        required: true
+        default: "5.x"
+      EXTRA_CMAKE_OPTIONS:
+        description: "Extra CMake options"
+        required: false
+        default: "-DWITH_OPENCL=OFF -DHAVE_OPENCL=OFF -DOPENCL_INCLUDE_DIRS=\"\" -DOPENCL_LIBRARIES=\"\" -DOPENCV_DOWNLOAD_PATH=%BINARIES_CACHE% -DBUILD_EXAMPLES=OFF -DOPENCV_ENABLE_NONFREE=ON -DCMAKE_BUILD_TYPE=Release"
+
+concurrency:
+  group: OCV-PR-5.x-W10-ARM64-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXTRA_CMAKE_OPTIONS: '-DWITH_OPENCL=OFF -DHAVE_OPENCL=OFF -DOPENCL_INCLUDE_DIRS="" -DOPENCL_LIBRARIES="" -DOPENCV_DOWNLOAD_PATH=%BINARIES_CACHE% -DBUILD_EXAMPLES=OFF -DOPENCV_ENABLE_NONFREE=ON -DCMAKE_BUILD_TYPE=Release'
+  PR_AUTHOR: ${{ inputs.PR_AUTHOR }}
+  PR_AUTHOR_FORK: ${{ inputs.PR_AUTHOR_FORK }}
+  SOURCE_BRANCH_NAME: ${{ inputs.SOURCE_BRANCH_NAME }}
+  TARGET_BRANCH_NAME: ${{ inputs.TARGET_BRANCH_NAME }}
+  GIT_CACHE: ${{ github.workspace }}\_git-cache
+  BINARIES_CACHE: ${{ github.workspace }}\_downloads
+
+jobs:
+  CrossBuild:
+    runs-on: windows-11-arm
+    defaults:
+      run:
+        shell: cmd
+    steps:
+    - name: Brief system information
+      timeout-minutes: 60
+      run: |
+        echo ===== OS =====
+        ver
+        echo ===== CMake =====
+        cmake --version
+        echo ===== VS 2022 install path =====
+        "%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath || echo vswhere not found
+        echo ===== MSBuild =====
+        where msbuild || echo msbuild not in PATH
+        echo ===== Git =====
+        git --version
+
+    - name: Setup infra environment
+      timeout-minutes: 60
+      shell: bash
+      run: |
+        mkdir -p "$GITHUB_WORKSPACE/_git-cache" "$GITHUB_WORKSPACE/_downloads"
+        # если EXTRA_CMAKE_OPTIONS передали при запуске — используем его
+        if [[ -n "${{ inputs.EXTRA_CMAKE_OPTIONS }}" ]]; then
+          echo "EXTRA_CMAKE_OPTIONS=${{ inputs.EXTRA_CMAKE_OPTIONS }}" >> "$GITHUB_ENV"
+        fi
+        # если TARGET_BRANCH_NAME не задан — дефолт 5.x (дублирование для совместимости)
+        if [[ -z "${{ inputs.TARGET_BRANCH_NAME }}" ]]; then
+          echo "TARGET_BRANCH_NAME=5.x" >> "$GITHUB_ENV"
+        fi
+
+    - name: PR info
+      timeout-minutes: 60
+      run: |
+        echo "PR Author: %PR_AUTHOR%"
+        echo "PR Author fork: %PR_AUTHOR_FORK%"
+        echo "Source branch name: %SOURCE_BRANCH_NAME%"
+        echo "Target branch name: %TARGET_BRANCH_NAME%"
+
+    - name: Clean
+      timeout-minutes: 60
+      run: |
+        cd "%GITHUB_WORKSPACE%" && ^
+        if exist build rmdir /s /q build & ^
+        if exist opencv rmdir /s /q opencv & ^
+        if exist opencv_extra rmdir /s /q opencv_extra & ^
+        if exist _downloads rmdir /s /q _downloads & ^
+        if exist _git-cache rmdir /s /q _git-cache & ^
+        mkdir build _downloads _git-cache
+
+    - name: Fetch opencv
+      timeout-minutes: 60
+      run: |
+        cd "%GITHUB_WORKSPACE%"
+        git clone --branch "%TARGET_BRANCH_NAME%" --reference "%GIT_CACHE%\opencv.git" https://github.com/opencv/opencv.git
+
+    - name: Merge opencv with %SOURCE_BRANCH_NAME% branch
+      timeout-minutes: 60
+      if: ${{ env.SOURCE_BRANCH_NAME != '' && env.PR_AUTHOR_FORK != '' }}
+      run: |
+        cd "%GITHUB_WORKSPACE%\opencv"
+        git remote add prfork "https://github.com/%PR_AUTHOR_FORK%.git"
+        git fetch prfork "%SOURCE_BRANCH_NAME%"
+        git pull -v "prfork" "%SOURCE_BRANCH_NAME%"
+
+    - name: Fetch opencv_extra
+      timeout-minutes: 60
+      run: |
+        cd "%GITHUB_WORKSPACE%"
+        git clone --single-branch --branch "%TARGET_BRANCH_NAME%" --reference "%GIT_CACHE%\opencv_extra.git" https://github.com/opencv/opencv_extra.git
+
+    - name: Configure OpenCV
+      timeout-minutes: 60
+      run: |
+        mkdir "%GITHUB_WORKSPACE%\build"
+        cd "%GITHUB_WORKSPACE%\build"
+        call "%ProgramFiles%\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsarm64.bat"
+        cmake -G"Visual Studio 17 2022" -A ARM64 -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=ARM64 %EXTRA_CMAKE_OPTIONS% "%GITHUB_WORKSPACE%\opencv"
+
+    - name: Build OpenCV
+      timeout-minutes: 60
+      id: build-opencv
+      run: |
+        cd "%GITHUB_WORKSPACE%\build"
+        call "%ProgramFiles%\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsarm64.bat"
+        if exist OpenCV.sln (
+          msbuild.exe OpenCV.sln /m /p:Configuration=Release > "%GITHUB_WORKSPACE%\build\build-log.txt" 2>&1
+        ) else (
+          rem fallback на cmake --build если имя sln иное
+          cmake --build . --config Release > "%GITHUB_WORKSPACE%\build\build-log.txt" 2>&1
+        )
+        type "%GITHUB_WORKSPACE%\build\build-log.txt" | more
+
+    - name: Warnings check
+      timeout-minutes: 60
+      run: |
+        cd "%GITHUB_WORKSPACE%\build"
+        if exist "%CI_SCRIPTS%\warnings-handling.py" (
+          python "%CI_SCRIPTS%\warnings-handling.py"
+        ) else (
+          echo "warnings-handling.py not found, skipping"
+        )
+
+    - name: Install OpenCV
+      timeout-minutes: 30
+      run: |
+        cd "%GITHUB_WORKSPACE%\build"
+        cmake --install . --config Release --prefix "%GITHUB_WORKSPACE%\install"
+
+    - name: Pack artifacts
+      timeout-minutes: 15
+      run: |
+        cd "%GITHUB_WORKSPACE%"
+        if exist opencv-%TARGET_BRANCH_NAME%-win11-arm64-Release.zip del /q opencv-%TARGET_BRANCH_NAME%-win11-arm64-Release.zip
+        tar -a -c -f "opencv-%TARGET_BRANCH_NAME%-win11-arm64-Release.zip" install
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: opencv-win11-arm64-Release
+        path: opencv-${{ env.TARGET_BRANCH_NAME }}-win11-arm64-Release.zip
