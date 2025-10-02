@@ -14,117 +14,67 @@ on:
 
 jobs:
   Build:
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'windows-11-arm' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.11']
-        platform: [arm64]
-        with_contrib: [0, 1]
-        without_gui: [0, 1]
-        build_sdist: [0]
-    env:
-      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
-      SDIST: ${{ matrix.build_sdist || 0 }}
-      ENABLE_HEADLESS: ${{ matrix.without_gui }}
-      ENABLE_CONTRIB: ${{ matrix.with_contrib }}
-      OPENCV_TEST_DATA_PATH: ${{ github.workspace }}\opencv_extra\testdata
-    steps:
-    - name: Cleanup
-      shell: bash
-      run: |
-        rm -rf ./* || true
-        rm -rf ./.??* || true
-      working-directory: ${{ github.workspace }}
-    - name: Setup environment
-      shell: bash
-      run: |
-        if [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          echo "ENABLE_ROLLING=1" >> $GITHUB_ENV
-        fi
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: false
-        fetch-depth: 0
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-        architecture: ${{ matrix.platform }}
-    - name: Setup MSBuild.exe
-      uses: microsoft/setup-msbuild@v1.1
-      with:
-        msbuild-architecture: arm64
-    - name: Build a package
-      run: |
-        python --version
-        python -m pip install --upgrade pip
-        python -m pip install --upgrade setuptools
-        python -m pip install cmake==4.1.0
-        python -m pip install toml && python -c "import toml; c = toml.load('pyproject.toml'); print('\n'.join(c['build-system']['requires']))" >> requirements.txt | python -m pip install -r requirements.txt
-        set "CI_BUILD=1" && python setup.py bdist_wheel --py-limited-api=cp37 --dist-dir=%cd%\wheelhouse -v
-      shell: cmd
-    - name: Saving all wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheel-${{ matrix.with_contrib }}-${{ matrix.without_gui }}-${{ matrix.build_sdist }}-${{ matrix.platform }}
-        path: wheelhouse/opencv*
-
-  Test:
-    needs: [Build]
     runs-on: windows-11-arm
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        branch: ${{ fromJSON(needs.branch_eval.outputs.branches) }}
     defaults:
       run:
-        shell: cmd
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.11', '3.12', '3.13']
-        platform: [arm64]
-        with_contrib: [0, 1]
-        without_gui: [0, 1]
-        build_sdist: [0]
+        shell: bash
     env:
-      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
-      OPENCV_TEST_DATA_PATH: ${{ github.workspace }}\opencv_extra\testdata
-      PYLINT_TEST_FILE: ${{ github.workspace }}\opencv\samples\python\squares.py
-      PlatformToolset: v143
+      CMAKE_OPT: >-
+        -DCL_Z_OPTION=/Z7
+        -DBUILD_EXAMPLES=ON
+        -DOPENCV_ENABLE_NONFREE=ON
+        -DWITH_OPENCL=OFF
+      MAIN_BUILD_DIR: "build-arm"
+      OPENCV_FOR_THREADS_NUM: 8
+      CMAKE_BUILD_PARALLEL_LEVEL: 8
+
     steps:
-    - name: Cleanup
-      shell: bash
-      run: |
-        rm -rf ./* || true
-        rm -rf ./.??* || true
-      working-directory: ${{ github.workspace }}
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: true
-        fetch-depth: 0
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-        architecture: ${{ matrix.platform }}
-    - name: Download a wheel accordingly to matrix
-      uses: actions/download-artifact@v4
-      with:
-        name: wheel-${{ matrix.with_contrib }}-${{ matrix.without_gui }}-${{ matrix.build_sdist }}-${{ matrix.platform }}
-        path: wheelhouse/
-    - name: Package installation
-      run: |
-        cd ${{ github.workspace }}/tests
-        &python -m pip install --user --no-warn-script-location (ls "../wheelhouse/opencv*.whl")
-        if ($LastExitCode -ne 0) {throw $LastExitCode}
-        python get_build_info.py
-      shell: powershell
-    - name: Run tests
-      run: |
-        cd ${{ github.workspace }}/opencv
-        python modules\python\test\test.py -v --repo .
-    - name: Pylint test
-      run: |
-        python -m pip install pylint==2.15.9
-        cd ${{ github.workspace }}\tests
-        python -m pylint $PYLINT_TEST_FILE
+      - name: Checkout workflow repository
+        uses: actions/checkout@v4
+        with:
+          repository: opencv/ci-gha-workflow
+          ref: "${{ github.repository == 'opencv/ci-gha-workflow' && github.ref || inputs.workflow_branch }}"
+
+      - name: Checkout and merge OpenCV
+        uses: ./checkout-and-merge
+        with:
+          target_branch: '${{ matrix.branch }}'
+          author: '${{ github.event.pull_request.user.login }}'
+          source_branch: "${{ github.event.repository.name == 'ci-gha-workflow' && '' || github.head_ref }}"
+          gitcache: '${{ env.GIT_CACHE }}'
+          workdir: '${{ github.workspace }}'
+
+      - name: Update extra dnn models
+        timeout-minutes: 60
+        working-directory: '${{ github.workspace }}'
+        run: |
+          python opencv_extra/testdata/dnn/download_models.py \
+            --cleanup \
+            --dst "${{ github.workspace }}/.dnn"
+          echo "OPENCV_DNN_TEST_DATA_PATH=${{ github.workspace }}" >> $GITHUB_ENV
+
+      - name: Configure and build OpenCV (ARM64)
+        uses: ./configure-and-build
+        with:
+          workdir: '${{ github.workspace }}'
+          builddir: 'build-arm'
+          generator: 'Visual Studio 17 2022'
+          options: >-
+            -A ARM64
+            ${{ env.CMAKE_OPT }}
+
+      - name: Configure and build OpenCV with contrib (ARM64)
+        uses: ./configure-and-build
+        with:
+          workdir: '${{ github.workspace }}'
+          builddir: 'build-contrib-arm'
+          generator: 'Visual Studio 17 2022'
+          options: >-
+            -A ARM64
+            -DOPENCV_EXTRA_MODULES_PATH=opencv_contrib/modules
+            ${{ env.CMAKE_OPT }}
