@@ -3,10 +3,18 @@ name: OCV PR Windows ARM
 on:
   pull_request:
     branches: [ main-warm ]
+  push:
+    branches: [ main-warm ]
   workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Runner label (windows-11-arm for public repos)'
+        required: true
+        default: 'windows-11-arm'
+
 jobs:
   Build:
-    runs-on: windows-11-arm
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'windows-11-arm' }}
     strategy:
       fail-fast: false
       matrix:
