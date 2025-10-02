@@ -75,8 +75,8 @@ jobs:
       - name: Install Python deps for DNN model download
         run: python -m pip install requests
         
-      - name: Update extra dnn models
-        timeout-minutes: 60
+      - name: Update extra dnn models (best-effort)
+        continue-on-error: true
         working-directory: '${{ github.workspace }}'
         run: |
           python opencv_extra/testdata/dnn/download_models.py \
