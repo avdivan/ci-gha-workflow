@@ -1,4 +1,4 @@
-name: OCV PR Windows ARM
+name: "OCV PR Windows ARM"
 
 on:
   pull_request:
@@ -8,9 +8,13 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: 'Runner label (windows-11-arm for public repos)'
+        description: "Runner label (windows-11-arm for public repos)"
         required: true
-        default: 'windows-11-arm'
+        default: "windows-11-arm"
+      opencv_branch:
+        description: "OpenCV branch to build (e.g. 4.x or 5.x)"
+        required: false
+        default: "5.x"
 
 jobs:
   branch_eval:
@@ -21,10 +25,14 @@ jobs:
       - id: out
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "branches=[ '${{ github.base_ref }}' ]" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.opencv_branch }}" ]; then
+            echo "branches=[ '${{ inputs.opencv_branch }}' ]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ github.event.repository.name == 'ci-gha-workflow' }}" = "true" ] ; then
+            echo "branches=[ '4.x', '5.x' ]" >> "$GITHUB_OUTPUT"
           else
-            echo "branches=[ '${{ github.ref_name }}' ]" >> "$GITHUB_OUTPUT"
+            echo "branches=[ '${{ github.base_ref || github.ref_name }}' ]" >> "$GITHUB_OUTPUT"
           fi
 
   Build:
@@ -50,46 +58,4 @@ jobs:
 
     steps:
       - name: Checkout workflow repository
-        uses: actions/checkout@v4
-        with:
-          repository: opencv/ci-gha-workflow
-          ref: "${{ github.repository == 'opencv/ci-gha-workflow' && github.ref || inputs.workflow_branch }}"
-
-      - name: Checkout and merge OpenCV
-        uses: ./checkout-and-merge
-        with:
-          target_branch: '${{ matrix.branch }}'
-          author: '${{ github.event.pull_request.user.login }}'
-          source_branch: "${{ github.event.repository.name == 'ci-gha-workflow' && '' || github.head_ref }}"
-          gitcache: '${{ env.GIT_CACHE }}'
-          workdir: '${{ github.workspace }}'
-
-      - name: Update extra dnn models
-        timeout-minutes: 60
-        working-directory: '${{ github.workspace }}'
-        run: |
-          python opencv_extra/testdata/dnn/download_models.py \
-            --cleanup \
-            --dst "${{ github.workspace }}/.dnn"
-          echo "OPENCV_DNN_TEST_DATA_PATH=${{ github.workspace }}" >> $GITHUB_ENV
-
-      - name: Configure and build OpenCV (ARM64)
-        uses: ./configure-and-build
-        with:
-          workdir: '${{ github.workspace }}'
-          builddir: 'build-arm'
-          generator: 'Visual Studio 17 2022'
-          options: >-
-            -A ARM64
-            ${{ env.CMAKE_OPT }}
-
-      - name: Configure and build OpenCV with contrib (ARM64)
-        uses: ./configure-and-build
-        with:
-          workdir: '${{ github.workspace }}'
-          builddir: 'build-contrib-arm'
-          generator: 'Visual Studio 17 2022'
-          options: >-
-            -A ARM64
-            -DOPENCV_EXTRA_MODULES_PATH=opencv_contrib/modules
-            ${{ env.CMAKE_OPT }}
+        uses: acti
