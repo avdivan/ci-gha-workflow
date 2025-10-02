@@ -3,7 +3,10 @@ name: OCV PR Windows 11 ARM
 on:
   pull_request:
     branches: [ main-warm ]
-  workflow_dispatch:
+    
+    paths:
+      - '.github/workflows/Windows-ARM-test.yml'
+  workflow_call:
 jobs:
   Build:
     runs-on: windows-11-arm
