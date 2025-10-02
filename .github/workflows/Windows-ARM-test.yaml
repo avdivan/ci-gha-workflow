@@ -1,4 +1,4 @@
-name: "OCV PR: Windows 11 ARM"
+name: OCV PR Windows ARM
 
 on:
   pull_request:
