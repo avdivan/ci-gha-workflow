@@ -13,9 +13,23 @@ on:
         default: 'windows-11-arm'
 
 jobs:
+  branch_eval:
+    runs-on: ubuntu-24.04
+    outputs:
+      branches: ${{ steps.out.outputs.branches }}
+    steps:
+      - id: out
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "branches=[ '${{ github.base_ref }}' ]" >> "$GITHUB_OUTPUT"
+          else
+            echo "branches=[ '${{ github.ref_name }}' ]" >> "$GITHUB_OUTPUT"
+          fi
+
   Build:
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'windows-11-arm' }}
     needs: [branch_eval]
-    runs-on: windows-11-arm
     strategy:
       fail-fast: true
       max-parallel: 1
