@@ -14,6 +14,7 @@ on:
 
 jobs:
   Build:
+    needs: [branch_eval]
     runs-on: windows-11-arm
     strategy:
       fail-fast: true
