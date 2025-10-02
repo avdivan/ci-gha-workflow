@@ -2,7 +2,7 @@ name: "OCV PR: Windows 11 ARM"
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main-warm ]
   workflow_dispatch:
 jobs:
   Build:
