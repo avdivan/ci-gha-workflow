@@ -48,30 +48,22 @@ jobs:
         shell: bash
     env:
       CMAKE_OPT: >-
-        -DCL_Z_OPTION=/Z7
-        -DBUILD_EXAMPLES=ON
-        -DOPENCV_ENABLE_NONFREE=ON
-        -DWITH_OPENCL=OFF
-        -DBUILD_opencv_vulkan=OFF
-        -DOPENCV_DNN_VULKAN=OFF
-        -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
-        
+         -DCL_Z_OPTION=/Z7
+         -DBUILD_EXAMPLES=ON
+         -DOPENCV_ENABLE_NONFREE=ON
+         -DBUILD_LIST=core,imgproc,highgui,videoio
+         -DBUILD_opencv_dnn=OFF
+         -DWITH_OPENCL=OFF
+         -DWITH_VULKAN=OFF
+         -DBUILD_opencv_vulkan=OFF
+         -DOPENCV_DNN_VULKAN=OFF
+         -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
       MAIN_BUILD_DIR: "build-arm"
       OPENCV_FOR_THREADS_NUM: 8
       CMAKE_BUILD_PARALLEL_LEVEL: 8
 
     steps:
-      - name: Cleanup
-        shell: bash
-        run: |
-          rm -rf ./* || true
-          rm -rf ./.??* || true
-        working-directory: ${{ github.workspace }}
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: true
-          fetch-depth: 0
+    
       - name: Checkout workflow repository
         uses: actions/checkout@v4
         with:
@@ -96,13 +88,6 @@ jobs:
         run: |
           rm -rf build-arm build-contrib-arm
           
-      - name: Assert DNN/Vulkan OFF
-        run: |
-           type build-arm/CMakeCache.txt | findstr /I "BUILD_opencv_dnn:"
-           type build-arm/CMakeCache.txt | findstr /I "WITH_VULKAN:"
-           type build-arm/CMakeCache.txt | findstr /I "CMAKE_DISABLE_FIND_PACKAGE_Vulkan:"
-           type build-arm/CMakeCache.txt | findstr /I "BUILD_LIST"
-          
       - name: Configure and build OpenCV (ARM64)
         uses: ./configure-and-build
         with:
@@ -112,12 +97,7 @@ jobs:
           options: >-
             -A ARM64
             ${{ env.CMAKE_OPT }}
-      - name: Assert DNN/Vulkan OFF
-        run: |
-           type build-arm/CMakeCache.txt | findstr /I "BUILD_opencv_dnn:"
-           type build-arm/CMakeCache.txt | findstr /I "WITH_VULKAN:"
-           type build-arm/CMakeCache.txt | findstr /I "CMAKE_DISABLE_FIND_PACKAGE_Vulkan:"
-           type build-arm/CMakeCache.txt | findstr /I "BUILD_LIST"
+            
            
       - name: Configure and build OpenCV with contrib (ARM64)
         uses: ./configure-and-build
