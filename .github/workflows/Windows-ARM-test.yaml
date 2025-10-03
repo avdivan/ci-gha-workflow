@@ -96,6 +96,13 @@ jobs:
         run: |
           rm -rf build-arm build-contrib-arm
           
+      - name: Assert DNN/Vulkan OFF
+        run: |
+           type build-arm/CMakeCache.txt | findstr /I "BUILD_opencv_dnn:"
+           type build-arm/CMakeCache.txt | findstr /I "WITH_VULKAN:"
+           type build-arm/CMakeCache.txt | findstr /I "CMAKE_DISABLE_FIND_PACKAGE_Vulkan:"
+           type build-arm/CMakeCache.txt | findstr /I "BUILD_LIST"
+          
       - name: Configure and build OpenCV (ARM64)
         uses: ./configure-and-build
         with:
