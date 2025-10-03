@@ -52,6 +52,8 @@ jobs:
         -DBUILD_EXAMPLES=ON
         -DOPENCV_ENABLE_NONFREE=ON
         -DWITH_OPENCL=OFF
+        -DWITH_VULKAN=OFF
+        -DBUILD_opencv_vulkan=OFF
       MAIN_BUILD_DIR: "build-arm"
       OPENCV_FOR_THREADS_NUM: 8
       CMAKE_BUILD_PARALLEL_LEVEL: 8
