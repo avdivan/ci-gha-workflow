@@ -59,6 +59,17 @@ jobs:
       CMAKE_BUILD_PARALLEL_LEVEL: 8
 
     steps:
+      - name: Cleanup
+        shell: bash
+        run: |
+          rm -rf ./* || true
+          rm -rf ./.??* || true
+        working-directory: ${{ github.workspace }}
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
       - name: Checkout workflow repository
         uses: actions/checkout@v4
         with:
