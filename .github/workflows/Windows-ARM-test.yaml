@@ -85,6 +85,10 @@ jobs:
           gitcache: '${{ env.GIT_CACHE }}'
           workdir: '${{ github.workspace }}'
           
+      - name: Setup MSBuild.exe
+        uses: microsoft/setup-msbuild@v1.1
+        with:
+          msbuild-architecture: arm64
 
       - name: Configure and build OpenCV (ARM64)
         uses: ./configure-and-build
