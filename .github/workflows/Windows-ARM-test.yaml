@@ -89,7 +89,7 @@ jobs:
         with:
           workdir: '${{ github.workspace }}'
           builddir: 'build-arm'
-          generator: 'Visual Studio 17 2022'
+          generator: '"Visual Studio 17 2022"'
           options: >-
             -A ARM64
             ${{ env.CMAKE_OPT }}
@@ -99,7 +99,7 @@ jobs:
         with:
           workdir: '${{ github.workspace }}'
           builddir: 'build-contrib-arm'
-          generator: 'Visual Studio 17 2022'
+          generator: '"Visual Studio 17 2022"'
           options: >-
             -A ARM64
             -DOPENCV_EXTRA_MODULES_PATH=opencv_contrib/modules
