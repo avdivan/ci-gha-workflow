@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/OCV-Contrib-PR-5.x-docs.yaml'
   workflow_call:
+  workflow_dispatch:
 
 concurrency:
   group: OCV-Contrib-PR-5.x-docs-${{ github.ref }}
