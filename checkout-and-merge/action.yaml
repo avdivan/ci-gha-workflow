@@ -9,7 +9,7 @@ inputs:
     description: "Target PR branch in OpenCV repository (4.x, 5.x)"
     default: "4.x"
   author:
-    description: "PR author"
+    description: "PR source repository owner"
   source_branch:
     description: "Source PR branch"
   gitcache:
@@ -52,7 +52,7 @@ runs:
     run: |
       echo "::group::Merge opencv"
       HOME=${{ inputs.home }} \
-      git -C opencv pull -v "https://github.com/${{ inputs.author }}/opencv" "${{ inputs.source_branch }}"
+      git -C opencv pull --no-rebase -v "https://github.com/${{ inputs.author }}/opencv" "${{ inputs.source_branch }}"
       echo "::endgroup::"
 
   #  opencv_contrib
@@ -83,7 +83,7 @@ runs:
     run: |
       echo "::group::Merge opencv_contrib"
       HOME=${{ inputs.home }} \
-      git -C opencv_contrib pull -v "https://github.com/${{ inputs.author }}/opencv_contrib" "${{ inputs.source_branch }}"
+      git -C opencv_contrib pull --no-rebase -v "https://github.com/${{ inputs.author }}/opencv_contrib" "${{ inputs.source_branch }}"
       echo "::endgroup::"
 
   # opencv_extra
