@@ -1,0 +1,187 @@
+name: Build FFmpeg macOS LGPL
+
+on:
+  workflow_dispatch:
+
+env:
+  FFMPEG_VERSION: "9.0.2"
+  INSTALL_PREFIX: "/opt/ffmpeg-lgpl"
+
+jobs:
+  build:
+    name: FFmpeg ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+
+    steps:
+      - name: System info
+        run: |
+          set -euxo pipefail
+
+          uname -a
+          uname -m
+          sw_vers
+          clang --version
+
+      - name: Download FFmpeg
+        run: |
+          set -euxo pipefail
+
+          curl -fL \
+            "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
+            -o ffmpeg.tar.xz
+
+          tar -xf ffmpeg.tar.xz
+
+      - name: Configure FFmpeg
+        working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
+        run: |
+          set -euxo pipefail
+
+          ./configure \
+            --prefix="${INSTALL_PREFIX}" \
+            --enable-shared \
+            --disable-static \
+            --disable-gpl \
+            --disable-nonfree \
+            --disable-autodetect \
+            --disable-doc \
+            --disable-debug \
+            --enable-videotoolbox \
+            --enable-audiotoolbox
+
+      - name: Show configuration
+        working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
+        run: |
+          cat ffbuild/config.mak
+          cat config.h | head -100
+
+      - name: Build
+        working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
+        run: |
+          set -euxo pipefail
+
+          make -j"$(sysctl -n hw.ncpu)"
+
+      - name: Install into staging directory
+        working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
+        run: |
+          set -euxo pipefail
+
+          STAGE="${RUNNER_TEMP}/ffmpeg-stage"
+
+          rm -rf "${STAGE}"
+          mkdir -p "${STAGE}"
+
+          make DESTDIR="${STAGE}" install
+
+          find "${STAGE}" -maxdepth 4 -type f | sort
+
+      - name: Verify license configuration
+        working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
+        run: |
+          set -euxo pipefail
+
+          CONFIG="$(./ffmpeg -buildconf 2>&1)"
+
+          echo "${CONFIG}"
+
+          if echo "${CONFIG}" | grep -q -- '--enable-gpl'; then
+            echo "ERROR: FFmpeg contains --enable-gpl"
+            exit 1
+          fi
+
+          if echo "${CONFIG}" | grep -q -- '--enable-nonfree'; then
+            echo "ERROR: FFmpeg contains --enable-nonfree"
+            exit 1
+          fi
+
+          ./ffmpeg -version
+
+      - name: Verify architecture
+        run: |
+          set -euxo pipefail
+
+          ROOT="${RUNNER_TEMP}/ffmpeg-stage${INSTALL_PREFIX}"
+
+          file "${ROOT}/bin/ffmpeg"
+          file "${ROOT}/lib/libavcodec.dylib"
+
+          lipo -archs "${ROOT}/bin/ffmpeg"
+          lipo -archs "${ROOT}/lib/libavcodec.dylib"
+
+          test "$(lipo -archs "${ROOT}/bin/ffmpeg")" = "arm64"
+
+      - name: Verify dylib dependencies
+        run: |
+          set -euxo pipefail
+
+          ROOT="${RUNNER_TEMP}/ffmpeg-stage${INSTALL_PREFIX}"
+
+          echo "=== libavcodec ==="
+          otool -L "${ROOT}/lib/libavcodec.dylib"
+
+          echo "=== libavformat ==="
+          otool -L "${ROOT}/lib/libavformat.dylib"
+
+          echo "=== ffmpeg ==="
+          otool -L "${ROOT}/bin/ffmpeg"
+
+      - name: Verify pkg-config files
+        run: |
+          set -euxo pipefail
+
+          ROOT="${RUNNER_TEMP}/ffmpeg-stage${INSTALL_PREFIX}"
+
+          find "${ROOT}/lib/pkgconfig" \
+            -type f \
+            -name '*.pc' \
+            -print
+
+          grep '^prefix=' "${ROOT}/lib/pkgconfig/libavcodec.pc"
+
+      - name: Write build info
+        run: |
+          set -euxo pipefail
+
+          ROOT="${RUNNER_TEMP}/ffmpeg-stage${INSTALL_PREFIX}"
+
+          cat > "${ROOT}/BUILD_INFO.txt" <<EOF
+          FFmpeg version: ${FFMPEG_VERSION}
+          Architecture: $(uname -m)
+          macOS: $(sw_vers -productVersion)
+          Install prefix: ${INSTALL_PREFIX}
+          GPL: disabled
+          nonfree: disabled
+          Shared libraries: enabled
+          VideoToolbox: enabled
+          AudioToolbox: enabled
+          EOF
+
+      - name: Package
+        run: |
+          set -euxo pipefail
+
+          cd "${RUNNER_TEMP}/ffmpeg-stage"
+
+          tar -czf \
+            "${GITHUB_WORKSPACE}/ffmpeg-${FFMPEG_VERSION}-macos-${{ matrix.arch }}-lgpl.tar.gz" \
+            opt/ffmpeg-lgpl
+
+          shasum -a 256 \
+            "${GITHUB_WORKSPACE}/ffmpeg-${FFMPEG_VERSION}-macos-${{ matrix.arch }}-lgpl.tar.gz" \
+            > "${GITHUB_WORKSPACE}/ffmpeg-${FFMPEG_VERSION}-macos-${{ matrix.arch }}-lgpl.tar.gz.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-${{ env.FFMPEG_VERSION }}-macos-${{ matrix.arch }}-lgpl
+          path: |
+            ffmpeg-${{ env.FFMPEG_VERSION }}-macos-${{ matrix.arch }}-lgpl.tar.gz
+            ffmpeg-${{ env.FFMPEG_VERSION }}-macos-${{ matrix.arch }}-lgpl.tar.gz.sha256
+          if-no-files-found: error
