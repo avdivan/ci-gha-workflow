@@ -2,7 +2,7 @@ name: Build FFmpeg macOS LGPL
 
 on:
   workflow_dispatch:
-
+  workflow_call:
 env:
   FFMPEG_VERSION: "9.0.2"
   INSTALL_PREFIX: "/opt/ffmpeg-lgpl"
