@@ -9,14 +9,8 @@ env:
 
 jobs:
   build:
-    name: FFmpeg ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
-
-    strategy:
-      matrix:
-        include:
-          - runner: macos-15
-            arch: arm64
+    name: FFmpeg arm64
+    runs-on: macos-15
 
     steps:
       - name: System info
@@ -55,13 +49,7 @@ jobs:
             --enable-videotoolbox \
             --enable-audiotoolbox
 
-      - name: Show configuration
-        working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
-        run: |
-          cat ffbuild/config.mak
-          cat config.h | head -100
-
-      - name: Build
+      - name: Build FFmpeg
         working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
         run: |
           set -euxo pipefail
@@ -71,17 +59,23 @@ jobs:
       - name: Install FFmpeg
         working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
         run: |
-           set -euxo pipefail
+          set -euxo pipefail
 
-           sudo rm -rf "${INSTALL_PREFIX}"
-           sudo mkdir -p "${INSTALL_PREFIX}"
+          sudo rm -rf "${INSTALL_PREFIX}"
+          sudo mkdir -p "${INSTALL_PREFIX}"
 
-           sudo make install
+          sudo make install
 
-           find "${INSTALL_PREFIX}" -maxdepth 4 -type f | sort
+          find "${INSTALL_PREFIX}" -maxdepth 4 -type f | sort
+
+      - name: Verify FFmpeg runs
+        run: |
+          set -euxo pipefail
+
+          "${INSTALL_PREFIX}/bin/ffmpeg" -version
+          "${INSTALL_PREFIX}/bin/ffprobe" -version
 
       - name: Verify license configuration
-        working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
         run: |
           set -euxo pipefail
 
@@ -99,87 +93,133 @@ jobs:
             exit 1
           fi
 
-           "${INSTALL_PREFIX}/bin/ffmpeg" -version
+          echo "FFmpeg GPL/nonfree check passed"
 
       - name: Verify architecture
         run: |
           set -euxo pipefail
 
-          ROOT="${RUNNER_TEMP}/ffmpeg-stage${INSTALL_PREFIX}"
+          file "${INSTALL_PREFIX}/bin/ffmpeg"
+          file "${INSTALL_PREFIX}/lib/libavcodec.dylib"
 
-          file "${ROOT}/bin/ffmpeg"
-          file "${ROOT}/lib/libavcodec.dylib"
+          ARCH_FFMPEG="$(lipo -archs "${INSTALL_PREFIX}/bin/ffmpeg")"
+          ARCH_AVCODEC="$(lipo -archs "${INSTALL_PREFIX}/lib/libavcodec.dylib")"
 
-          lipo -archs "${ROOT}/bin/ffmpeg"
-          lipo -archs "${ROOT}/lib/libavcodec.dylib"
+          echo "ffmpeg arch: ${ARCH_FFMPEG}"
+          echo "libavcodec arch: ${ARCH_AVCODEC}"
 
-          test "$(lipo -archs "${ROOT}/bin/ffmpeg")" = "arm64"
+          test "${ARCH_FFMPEG}" = "arm64"
+          test "${ARCH_AVCODEC}" = "arm64"
 
       - name: Verify dylib dependencies
         run: |
           set -euxo pipefail
 
-          ROOT="${RUNNER_TEMP}/ffmpeg-stage${INSTALL_PREFIX}"
+          echo "=== ffmpeg ==="
+          otool -L "${INSTALL_PREFIX}/bin/ffmpeg"
 
           echo "=== libavcodec ==="
-          otool -L "${ROOT}/lib/libavcodec.dylib"
+          otool -L "${INSTALL_PREFIX}/lib/libavcodec.dylib"
 
           echo "=== libavformat ==="
-          otool -L "${ROOT}/lib/libavformat.dylib"
+          otool -L "${INSTALL_PREFIX}/lib/libavformat.dylib"
 
-          echo "=== ffmpeg ==="
-          otool -L "${ROOT}/bin/ffmpeg"
+          echo "=== libavutil ==="
+          otool -L "${INSTALL_PREFIX}/lib/libavutil.dylib"
+
+          echo "=== libswscale ==="
+          otool -L "${INSTALL_PREFIX}/lib/libswscale.dylib"
 
       - name: Verify pkg-config files
         run: |
           set -euxo pipefail
 
-          ROOT="${RUNNER_TEMP}/ffmpeg-stage${INSTALL_PREFIX}"
+          export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig"
 
-          find "${ROOT}/lib/pkgconfig" \
+          find "${INSTALL_PREFIX}/lib/pkgconfig" \
             -type f \
             -name '*.pc' \
             -print
 
-          grep '^prefix=' "${ROOT}/lib/pkgconfig/libavcodec.pc"
+          pkg-config --modversion libavcodec
+          pkg-config --modversion libavformat
+          pkg-config --modversion libavutil
+          pkg-config --modversion libswscale
+
+          pkg-config --cflags libavcodec
+          pkg-config --libs libavcodec
 
       - name: Write build info
         run: |
           set -euxo pipefail
 
-          ROOT="${RUNNER_TEMP}/ffmpeg-stage${INSTALL_PREFIX}"
-
-          cat > "${ROOT}/BUILD_INFO.txt" <<EOF
+          sudo tee "${INSTALL_PREFIX}/BUILD_INFO.txt" >/dev/null <<EOF
           FFmpeg version: ${FFMPEG_VERSION}
           Architecture: $(uname -m)
           macOS: $(sw_vers -productVersion)
           Install prefix: ${INSTALL_PREFIX}
+
           GPL: disabled
           nonfree: disabled
-          Shared libraries: enabled
+          shared libraries: enabled
+          static libraries: disabled
           VideoToolbox: enabled
           AudioToolbox: enabled
+          autodetect: disabled
           EOF
 
-      - name: Package
+      - name: Package FFmpeg
         run: |
           set -euxo pipefail
 
-          cd "${RUNNER_TEMP}/ffmpeg-stage"
+          ARCH="$(uname -m)"
+          ARCHIVE="ffmpeg-${FFMPEG_VERSION}-macos-${ARCH}-lgpl.tar.gz"
 
-          tar -czf \
-            "${GITHUB_WORKSPACE}/ffmpeg-${FFMPEG_VERSION}-macos-${{ matrix.arch }}-lgpl.tar.gz" \
+          sudo tar \
+            -C / \
+            -czf "${GITHUB_WORKSPACE}/${ARCHIVE}" \
             opt/ffmpeg-lgpl
 
+          sudo chown "$(id -u):$(id -g)" \
+            "${GITHUB_WORKSPACE}/${ARCHIVE}"
+
           shasum -a 256 \
-            "${GITHUB_WORKSPACE}/ffmpeg-${FFMPEG_VERSION}-macos-${{ matrix.arch }}-lgpl.tar.gz" \
-            > "${GITHUB_WORKSPACE}/ffmpeg-${FFMPEG_VERSION}-macos-${{ matrix.arch }}-lgpl.tar.gz.sha256"
+            "${GITHUB_WORKSPACE}/${ARCHIVE}" \
+            > "${GITHUB_WORKSPACE}/${ARCHIVE}.sha256"
+
+          ls -lh \
+            "${GITHUB_WORKSPACE}/${ARCHIVE}" \
+            "${GITHUB_WORKSPACE}/${ARCHIVE}.sha256"
+
+      - name: Test packaged FFmpeg
+        run: |
+          set -euxo pipefail
+
+          ARCH="$(uname -m)"
+          ARCHIVE="ffmpeg-${FFMPEG_VERSION}-macos-${ARCH}-lgpl.tar.gz"
+
+          sudo rm -rf "${INSTALL_PREFIX}"
+
+          test ! -e "${INSTALL_PREFIX}/bin/ffmpeg"
+
+          sudo tar \
+            -xzf "${GITHUB_WORKSPACE}/${ARCHIVE}" \
+            -C /
+
+          "${INSTALL_PREFIX}/bin/ffmpeg" -version
+          "${INSTALL_PREFIX}/bin/ffmpeg" -buildconf
+
+          export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig"
+
+          pkg-config --modversion libavcodec
+          pkg-config --modversion libavformat
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ffmpeg-${{ env.FFMPEG_VERSION }}-macos-${{ matrix.arch }}-lgpl
+          name: ffmpeg-${{ env.FFMPEG_VERSION }}-macos-arm64-lgpl
           path: |
-            ffmpeg-${{ env.FFMPEG_VERSION }}-macos-${{ matrix.arch }}-lgpl.tar.gz
-            ffmpeg-${{ env.FFMPEG_VERSION }}-macos-${{ matrix.arch }}-lgpl.tar.gz.sha256
+            ffmpeg-${{ env.FFMPEG_VERSION }}-macos-arm64-lgpl.tar.gz
+            ffmpeg-${{ env.FFMPEG_VERSION }}-macos-arm64-lgpl.tar.gz.sha256
           if-no-files-found: error
+          retention-days: 30
