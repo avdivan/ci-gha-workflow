@@ -1,0 +1,53 @@
+name: Install FFmpeg artifact (macOS)
+
+on:
+  workflow_dispatch:
+
+env:
+  FFMPEG_VERSION: "9.0.2"
+  INSTALL_PREFIX: "/opt/ffmpeg-lgpl"
+
+jobs:
+  build-ffmpeg:
+    uses: ./.github/workflows/build-ffmpeg-macos.yml
+
+  install-ffmpeg:
+    name: Install FFmpeg arm64
+    needs: build-ffmpeg
+    runs-on: macos-15
+
+    steps:
+      - name: Download FFmpeg artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-${{ env.FFMPEG_VERSION }}-macos-arm64-lgpl
+          path: ${{ runner.temp }}/ffmpeg-artifact
+
+      - name: Verify checksum
+        working-directory: ${{ runner.temp }}/ffmpeg-artifact
+        run: |
+          set -euxo pipefail
+
+          shasum -a 256 -c "ffmpeg-${FFMPEG_VERSION}-macos-arm64-lgpl.tar.gz.sha256"
+
+      - name: Install FFmpeg
+        run: |
+          set -euxo pipefail
+
+          sudo rm -rf "${INSTALL_PREFIX}"
+
+          sudo tar \
+            -xzf "${{ runner.temp }}/ffmpeg-artifact/ffmpeg-${FFMPEG_VERSION}-macos-arm64-lgpl.tar.gz" \
+            -C /
+
+      - name: Verify FFmpeg runs
+        run: |
+          set -euxo pipefail
+
+          "${INSTALL_PREFIX}/bin/ffmpeg" -version
+          "${INSTALL_PREFIX}/bin/ffmpeg" -buildconf
+
+          export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig"
+
+          pkg-config --modversion libavcodec
+          pkg-config --modversion libavformat
