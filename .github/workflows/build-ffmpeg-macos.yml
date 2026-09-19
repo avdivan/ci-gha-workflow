@@ -68,26 +68,24 @@ jobs:
 
           make -j"$(sysctl -n hw.ncpu)"
 
-      - name: Install into staging directory
+      - name: Install FFmpeg
         working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
         run: |
-          set -euxo pipefail
+           set -euxo pipefail
 
-          STAGE="${RUNNER_TEMP}/ffmpeg-stage"
+           sudo rm -rf "${INSTALL_PREFIX}"
+           sudo mkdir -p "${INSTALL_PREFIX}"
 
-          rm -rf "${STAGE}"
-          mkdir -p "${STAGE}"
+           sudo make install
 
-          make DESTDIR="${STAGE}" install
-
-          find "${STAGE}" -maxdepth 4 -type f | sort
+           find "${INSTALL_PREFIX}" -maxdepth 4 -type f | sort
 
       - name: Verify license configuration
         working-directory: ffmpeg-${{ env.FFMPEG_VERSION }}
         run: |
           set -euxo pipefail
 
-          CONFIG="$(./ffmpeg -buildconf 2>&1)"
+          CONFIG="$("${INSTALL_PREFIX}/bin/ffmpeg" -buildconf 2>&1)"
 
           echo "${CONFIG}"
 
@@ -101,7 +99,7 @@ jobs:
             exit 1
           fi
 
-          ./ffmpeg -version
+           "${INSTALL_PREFIX}/bin/ffmpeg" -version
 
       - name: Verify architecture
         run: |
