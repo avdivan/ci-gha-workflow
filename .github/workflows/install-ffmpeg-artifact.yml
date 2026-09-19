@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euxo pipefail
 
-          shasum -a 256 -c "ffmpeg-${FFMPEG_VERSION}-macos-arm64-lgpl.tar.gz.sha256"
+          (cd "${GITHUB_WORKSPACE}" && shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256")
 
       - name: Install FFmpeg
         run: |
